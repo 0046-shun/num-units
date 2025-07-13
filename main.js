@@ -290,14 +290,17 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
   });
   // Firestoreに保存
   for (const row of rows) {
-    await db.collection('stocks').add(row);
+    await db.collection('sales_data').add({
+      ...row,
+      timestamp: Date.now()
+    });
   }
   alert('データをFirestoreに保存しました');
 });
 
 // ストック一覧表示
 async function fetchStockFromFirestore() {
-  const snapshot = await db.collection('stocks').get();
+  const snapshot = await db.collection('sales_data').get();
   return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
 }
 
@@ -351,7 +354,7 @@ function renderStockTable(stock) {
     btn.addEventListener('click', async function() {
       const tr = this.closest('tr');
       const id = tr.getAttribute('data-id');
-      await db.collection('stocks').doc(id).delete();
+      await db.collection('sales_data').doc(id).delete();
       tr.remove();
     });
   });
@@ -368,7 +371,7 @@ function renderStockTable(stock) {
         equipmentCount: tr.querySelector('.edit-equipmentCount').value,
         equipmentAmp: tr.querySelector('.edit-equipmentAmp').value
       };
-      await db.collection('stocks').doc(id).update(newData);
+      await db.collection('sales_data').doc(id).update(newData);
       alert('編集しました');
     });
   });
