@@ -158,13 +158,16 @@ function renderTable(rows) {
 
 let cachedProducts = null;
 
-// 全角→半角・スペース除去・小文字化
+// 全角→半角・スペース除去・小文字化＋補足語除去
 function normalize(str) {
   if (!str) return '';
-  return str
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+  let s = str
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
     .replace(/[\s　]+/g, '')
     .toLowerCase();
+  // 補足語・属性語を除去
+  s = s.replace(/(機器|モジュール|コントローラ|ファン|ソーラー|クリーン|Ⅱ|II|（新）|（旧）|\(.*?\))/g, '');
+  return s;
 }
 
 // 推定API呼び出し・自動入力処理
