@@ -9,8 +9,14 @@ const firebaseConfig = {
   measurementId: "G-T2Q60WE98P"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+let db = null;
+
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+} catch (error) {
+  console.error('Firebase初期化エラー:', error);
+}
 
 // 商品リストを取得
 let products = {};
@@ -29,11 +35,8 @@ function toSeireki(wareki) {
 function extractRow(line) {
   // 半角・全角スペースで区切る
   const parts = line.trim().split(/[\s　]+/);
-  console.log('分割されたパーツ:', parts);
-  console.log('パーツ数:', parts.length);
   
   if (parts.length < 6) {
-    console.log('パーツ数が6未満のためnullを返す');
     return null;
   }
   
@@ -45,12 +48,6 @@ function extractRow(line) {
   // 商品名は5番目以降を結合
   const productFull = parts.slice(5).join(' ');
   
-  console.log('伝票No:', no);
-  console.log('日付:', date);
-  console.log('営業所:', office);
-  console.log('金額:', amount);
-  console.log('商品名（フル）:', productFull);
-  
   // 属性語リスト
   const attrWords = ['買換', '下取', '買取', '再消毒', '消毒', '施工', '工事', '費', '料', '再消', '新規予', '（消）', '機器'];
   // 最初に現れる属性語を補足に、そこまでを商品名に
@@ -61,29 +58,22 @@ function extractRow(line) {
     if (idx !== -1) {
       product = productFull.slice(0, idx).trim();
       note = word;
-      console.log('属性語「' + word + '」を発見、商品名を「' + product + '」に、補足を「' + note + '」に設定');
       break;
     }
   }
   
   const result = { no, date, office, amount, product, note };
-  console.log('最終的な行データ:', result);
   return result;
 }
 
 function analyze(text) {
   const lines = text.split(/\r?\n/);
   const result = [];
-  console.log('入力テキスト:', text);
-  console.log('行数:', lines.length);
   
   for (const line of lines) {
-    console.log('処理中の行:', line);
     const row = extractRow(line);
-    console.log('抽出された行データ:', row);
     
     if (!row) {
-      console.log('行データがnullのためスキップ');
       continue;
     }
     
@@ -94,21 +84,12 @@ function analyze(text) {
       productName.includes(keyword.toUpperCase())
     );
     
-    console.log('商品名:', row.product);
-    console.log('大文字変換後:', productName);
-    console.log('対象キーワード:', targetKeywords);
-    console.log('キーワードマッチ:', hasTargetKeyword);
-    
     // 対象商品のみを結果に追加
     if (hasTargetKeyword) {
-      console.log('対象商品として追加');
-    result.push(row);
-    } else {
-      console.log('対象外商品としてスキップ');
+      result.push(row);
     }
   }
   
-  console.log('最終結果:', result);
   return result;
 }
 
@@ -134,7 +115,7 @@ function renderTable(rows) {
     tr.setAttribute('data-date', row.date);
     tr.setAttribute('data-office', row.office);
     tr.setAttribute('data-amount', row.amount);
-    tr.setAttribute('data-product', row.product); // ←必ず付与
+    tr.setAttribute('data-product', row.product);
     tr.setAttribute('data-note', row.note);
 
     // 日付をyyyy-mm-ddに
@@ -161,10 +142,10 @@ function renderTable(rows) {
       <td>${row.note}</td>
       <td>${createProductSelect(powerOptions, defaultPower ? defaultPower.value : '', 'power-product-select', row.no, row.date, row.product)}</td>
       <td><select class="form-select power-count-select" data-no="${row.no}" data-date="${row.date}" data-product="${row.product}" style="min-width:70px;"><option value="">選択</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></td>
-      <td><input type="text" class="form-control power-capacity-input" data-no="${row.no}" data-date="${row.date}" data-product="${row.product}" placeholder="A" style="min-width:70px;"></td>
+      <td><input type="text" class="form-control power-capacity-input" data-no="${row.no}" data-date="${row.date}" data-product="${row.product}" placeholder="A" style="min-width:70px;" readonly></td>
       <td>${createProductSelect(equipmentOptions, defaultEquipment ? defaultEquipment.value : '', 'equipment-product-select', row.no, row.date, row.product)}</td>
       <td><select class="form-select equipment-count-select" data-no="${row.no}" data-date="${row.date}" data-product="${row.product}" style="min-width:70px;"><option value="">選択</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></td>
-      <td><input type="text" class="form-control equipment-capacity-input" data-no="${row.no}" data-date="${row.date}" data-product="${row.product}" placeholder="A" style="min-width:70px;"></td>
+      <td><input type="text" class="form-control equipment-capacity-input" data-no="${row.no}" data-date="${row.date}" data-product="${row.product}" placeholder="A" style="min-width:70px;" readonly></td>
     `;
     tbody.appendChild(tr);
   }
@@ -173,8 +154,6 @@ function renderTable(rows) {
     tr.innerHTML = '<td colspan="12">該当データなし</td>';
     tbody.appendChild(tr);
   }
-  // セレクトタグのイベントセット
-  // setupRelationDiagramEvents(); // ←この関数とその呼び出しも削除
 }
 
 let cachedProducts = null;
@@ -183,13 +162,10 @@ let cachedProducts = null;
 function normalize(str) {
   if (!str) return '';
   return str
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)) // 全角→半角
-    .replace(/[\s　]+/g, '') // スペース除去
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+    .replace(/[\s　]+/g, '')
     .toLowerCase();
 }
-
-// 商品名・台数セレクト変更時のイベント
-// function setupAmpCalcEvent(rows) { ... } // ←この関数とその呼び出しも削除
 
 // 推定API呼び出し・自動入力処理
 async function autoFillPowerAndEquipment(rows) {
@@ -205,27 +181,29 @@ async function autoFillPowerAndEquipment(rows) {
     const originalProduct = row.product;
     const originalAmount = row.amount;
     let estimate = {};
+    
     try {
       const res = await fetch('http://localhost:3001/api/estimate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ no, date, originalProduct, originalAmount })
       });
-      estimate = await res.json();
+      
+      if (res.ok) {
+        estimate = await res.json();
+      }
     } catch (e) {}
-    // data-no, data-date, data-productで一意に行を特定
+    
     const tr = document.querySelector(`tr[data-no='${no}'][data-date='${date}'][data-product='${originalProduct}']`);
-    // 電源欄(td: 7,8,9番目)
+    
     if (estimate.powerProduct || estimate.powerCount || estimate.powerAmp) {
       if (tr) {
-        // 電源欄のtd（7,8,9番目）にクラス付与
         const tds = tr.querySelectorAll('td');
         if (tds[6]) tds[6].classList.add('matched-power');
         if (tds[7]) tds[7].classList.add('matched-power');
         if (tds[8]) tds[8].classList.add('matched-power');
       }
     }
-    // 機器欄(td: 10,11,12番目)
     if (estimate.equipmentProduct || estimate.equipmentCount || estimate.equipmentAmp) {
       if (tr) {
         const tds = tr.querySelectorAll('td');
@@ -234,6 +212,7 @@ async function autoFillPowerAndEquipment(rows) {
         if (tds[11]) tds[11].classList.add('matched-equipment');
       }
     }
+    
     const powerProductSelect = document.querySelector(`select.power-product-select[data-no='${no}'][data-date='${date}'][data-product='${originalProduct}']`);
     const powerCountSelect = document.querySelector(`select.power-count-select[data-no='${no}'][data-date='${date}'][data-product='${originalProduct}']`);
     const powerCapacityInput = document.querySelector(`input.power-capacity-input[data-no='${no}'][data-date='${date}'][data-product='${originalProduct}']`);
@@ -248,26 +227,147 @@ async function autoFillPowerAndEquipment(rows) {
     if (equipmentCountSelect && estimate.equipmentCount) equipmentCountSelect.value = estimate.equipmentCount;
     if (equipmentCapacityInput && estimate.equipmentAmp) equipmentCapacityInput.value = estimate.equipmentAmp;
   }));
-  // setupAmpCalcEvent(rows); // ←この関数とその呼び出しも削除
 }
 
-// 抽出ボタン押下時に自動計算を呼び出す
+// 商品選択後のアンペア自動計算機能
+function calculateAmperage(productSelect, countSelect, capacityInput) {
+  if (!cachedProducts) return;
+  
+  const selectedProduct = productSelect.value;
+  const selectedCount = parseInt(countSelect.value) || 0;
+  
+  if (!selectedProduct || selectedCount === 0) {
+    capacityInput.value = '';
+    return;
+  }
+  
+  // 電源商品か機器商品かを判定
+  let productData = null;
+  
+  // 電源商品から検索
+  productData = cachedProducts["電源"].find(p => p["商品名"] === selectedProduct);
+  
+  // 見つからない場合は機器商品から検索
+  if (!productData) {
+    productData = cachedProducts["機器"].find(p => p["商品名"] === selectedProduct);
+  }
+  
+  if (productData && productData["動作電流"]) {
+    const totalAmperage = productData["動作電流"] * selectedCount;
+    capacityInput.value = totalAmperage.toFixed(2);
+  } else {
+    capacityInput.value = '';
+  }
+}
+
+// セレクトボックスの変更イベントリスナーを設定
+function setupAmperageCalculation() {
+  // 電源商品選択時のアンペア計算
+  document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('power-product-select')) {
+      const tr = e.target.closest('tr');
+      const countSelect = tr.querySelector('.power-count-select');
+      const capacityInput = tr.querySelector('.power-capacity-input');
+      calculateAmperage(e.target, countSelect, capacityInput);
+    }
+    
+    if (e.target.classList.contains('power-count-select')) {
+      const tr = e.target.closest('tr');
+      const productSelect = tr.querySelector('.power-product-select');
+      const capacityInput = tr.querySelector('.power-capacity-input');
+      calculateAmperage(productSelect, e.target, capacityInput);
+    }
+    
+    if (e.target.classList.contains('equipment-product-select')) {
+      const tr = e.target.closest('tr');
+      const countSelect = tr.querySelector('.equipment-count-select');
+      const capacityInput = tr.querySelector('.equipment-capacity-input');
+      calculateAmperage(e.target, countSelect, capacityInput);
+    }
+    
+    if (e.target.classList.contains('equipment-count-select')) {
+      const tr = e.target.closest('tr');
+      const productSelect = tr.querySelector('.equipment-product-select');
+      const capacityInput = tr.querySelector('.equipment-capacity-input');
+      calculateAmperage(productSelect, e.target, capacityInput);
+    }
+  });
+}
+
+// 抽出ボタン押下時
 document.getElementById('extractBtn').addEventListener('click', async () => {
   const text = document.getElementById('inputArea').value;
   const rows = analyze(text);
   renderTable(rows);
+  
+  // 保存されたデータとの照合を実行
+  await checkExistingDataAndAutoFill(rows);
+  
   await autoFillPowerAndEquipment(rows);
 });
 
-// --- 関連ツリー生成・描画・ロジック・HTMLの全削除 ---
-// function renderRelationDiagram() { ... } // ←この関数とその呼び出し、関連ロジック・HTMLをすべて削除
-// function setupRelationDiagramEvents() { ... } // ←この関数とその呼び出しも削除
-// ...ツリー用の変数・データ構造・イベント・HTML生成も削除
-// showCurrentModalやモーダル表示部分は残す
+// 保存されたデータとの照合処理
+async function checkExistingDataAndAutoFill(rows) {
+  try {
+    const snapshot = await db.collection('sales_data').get();
+    const existingData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    
+    rows.forEach((row) => {
+      let matchingData = existingData.find(existing => 
+        existing.no === row.no && 
+        existing.date === row.date && 
+        existing.originalProduct === row.product
+      );
+      
+      if (!matchingData) {
+        matchingData = existingData.find(existing => {
+          const noMatch = existing.no === row.no;
+          const dateMatch = existing.date === row.date;
+          const normalizedExisting = normalize(existing.originalProduct || '');
+          const normalizedRow = normalize(row.product || '');
+          const productMatchExact = existing.originalProduct === row.product;
+          const productMatchNormalized = normalizedExisting === normalizedRow;
+          const productMatchPartial = normalizedExisting.includes(normalizedRow) || normalizedRow.includes(normalizedExisting);
+          
+          return noMatch && dateMatch && (productMatchExact || productMatchNormalized || productMatchPartial);
+        });
+      }
+      
+      if (matchingData) {
+        const tr = document.querySelector(`tr[data-no='${row.no}'][data-date='${row.date}'][data-product='${row.product}']`);
+        
+        if (tr) {
+          const powerProductSelect = tr.querySelector('select.power-product-select');
+          const powerCountSelect = tr.querySelector('select.power-count-select');
+          const powerCapacityInput = tr.querySelector('input.power-capacity-input');
+          const equipmentProductSelect = tr.querySelector('select.equipment-product-select');
+          const equipmentCountSelect = tr.querySelector('select.equipment-count-select');
+          const equipmentCapacityInput = tr.querySelector('input.equipment-capacity-input');
+          
+          if (powerProductSelect && matchingData.powerProduct) powerProductSelect.value = matchingData.powerProduct;
+          if (powerCountSelect && matchingData.powerCount) powerCountSelect.value = matchingData.powerCount;
+          if (powerCapacityInput && matchingData.powerAmp) powerCapacityInput.value = matchingData.powerAmp;
+          if (equipmentProductSelect && matchingData.equipmentProduct) equipmentProductSelect.value = matchingData.equipmentProduct;
+          if (equipmentCountSelect && matchingData.equipmentCount) equipmentCountSelect.value = matchingData.equipmentCount;
+          if (equipmentCapacityInput && matchingData.equipmentAmp) equipmentCapacityInput.value = matchingData.equipmentAmp;
+          
+          tr.style.backgroundColor = '#d4edda';
+          tr.style.border = '2px solid #28a745';
+          
+          const noteCell = tr.querySelector('td:nth-child(6)');
+          if (noteCell) {
+            noteCell.innerHTML += '<br><small class="text-success">✓ 既存データと照合済み</small>';
+          }
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('照合処理エラー:', error);
+  }
+}
 
 // データ確定ボタン押下時
-// テーブルの各行から貼り付けデータの商品名・金額、ユーザー選択の電源・機器の商品名・数量・容量をFirestoreに保存
-
 document.getElementById('confirmBtn').addEventListener('click', async () => {
   const rows = [];
   document.querySelectorAll('#resultTable tbody tr').forEach(tr => {
@@ -282,37 +382,65 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
     const equipmentProduct = tr.querySelector('select.equipment-product-select')?.value || '';
     const equipmentCount = tr.querySelector('select.equipment-count-select')?.value || '';
     const equipmentAmp = tr.querySelector('input.equipment-capacity-input')?.value || '';
+    
     rows.push({
       no, date, originalProduct, originalAmount,
       powerProduct, powerCount, powerAmp,
       equipmentProduct, equipmentCount, equipmentAmp
     });
   });
-  // Firestoreに保存
-  for (const row of rows) {
-    await db.collection('sales_data').add({
-      ...row,
-      timestamp: Date.now()
-    });
+  
+  if (rows.length === 0) {
+    alert('保存するデータがありません。');
+    return;
   }
-  alert('データをFirestoreに保存しました');
+  
+  try {
+    for (const row of rows) {
+      await db.collection('sales_data').add({
+        ...row,
+        timestamp: Date.now()
+      });
+    }
+    alert(`${rows.length}件のデータをFirestoreに保存しました`);
+  } catch (error) {
+    console.error('Firestore保存エラー:', error);
+    alert('データの保存に失敗しました: ' + error.message);
+  }
 });
 
 // ストック一覧表示
 async function fetchStockFromFirestore() {
-  const snapshot = await db.collection('sales_data').get();
-  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  try {
+    const snapshot = await db.collection('sales_data').get();
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  } catch (error) {
+    console.error('Firestoreからのデータ取得エラー:', error);
+    alert('データの取得に失敗しました: ' + error.message);
+    return [];
+  }
 }
 
 document.getElementById('showStockBtn').addEventListener('click', async () => {
   const stock = await fetchStockFromFirestore();
+  
+  if (stock.length === 0) {
+    alert('保存されているデータがありません。');
+    return;
+  }
+  
   renderStockTable(stock);
 });
 
 // 編集・削除
 function renderStockTable(stock) {
+  if (!stock || stock.length === 0) {
+    alert('表示するデータがありません。');
+    return;
+  }
+  
   let html = '<div class="stock-header">';
-  html += '<h3>ストック一覧</h3>';
+  html += '<h3>ストック一覧 (' + stock.length + '件)</h3>';
   html += '<button class="btn btn-outline-secondary btn-sm" id="closeStockBtn">閉じる</button>';
   html += '</div>';
   html += '<table class="table table-bordered table-striped align-middle" style="background:#fff;">';
@@ -322,10 +450,11 @@ function renderStockTable(stock) {
     '<th>機器商品</th><th>台数</th><th>容量</th>' +
     '<th>操作</th>' +
     '</tr></thead><tbody>';
-  stock.forEach(d => {
+  
+  stock.forEach((d) => {
     html += `<tr data-id="${d.id}">` +
-      `<td>${d.originalProduct}</td>` +
-      `<td>${d.originalAmount}</td>` +
+      `<td>${d.originalProduct || '未設定'}</td>` +
+      `<td>${d.originalAmount || '未設定'}</td>` +
       `<td><input value="${d.powerProduct||''}" class="form-control form-control-sm edit-powerProduct"></td>` +
       `<td><input value="${d.powerCount||''}" class="form-control form-control-sm edit-powerCount" style="width:60px"></td>` +
       `<td><input value="${d.powerAmp||''}" class="form-control form-control-sm edit-powerAmp" style="width:80px"></td>` +
@@ -336,10 +465,23 @@ function renderStockTable(stock) {
       '</tr>';
   });
   html += '</tbody></table>';
+  
   let area = document.getElementById('stockArea');
   if (!area) {
     area = document.createElement('div');
     area.id = 'stockArea';
+    area.style.position = 'fixed';
+    area.style.top = '50%';
+    area.style.left = '50%';
+    area.style.transform = 'translate(-50%, -50%)';
+    area.style.backgroundColor = 'white';
+    area.style.padding = '20px';
+    area.style.border = '1px solid #ccc';
+    area.style.borderRadius = '5px';
+    area.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+    area.style.maxHeight = '80vh';
+    area.style.overflowY = 'auto';
+    area.style.zIndex = '1000';
     document.body.appendChild(area);
   }
   area.innerHTML = html;
@@ -352,37 +494,47 @@ function renderStockTable(stock) {
   // 削除ボタン
   document.querySelectorAll('.deleteStockBtn').forEach(btn => {
     btn.addEventListener('click', async function() {
-      const tr = this.closest('tr');
-      const id = tr.getAttribute('data-id');
-      await db.collection('sales_data').doc(id).delete();
-      tr.remove();
+      if (confirm('このデータを削除しますか？')) {
+        try {
+          const tr = this.closest('tr');
+          const id = tr.getAttribute('data-id');
+          await db.collection('sales_data').doc(id).delete();
+          tr.remove();
+          alert('削除しました');
+        } catch (error) {
+          console.error('削除エラー:', error);
+          alert('削除に失敗しました: ' + error.message);
+        }
+      }
     });
   });
+  
   // 編集ボタン
   document.querySelectorAll('.editStockBtn').forEach(btn => {
     btn.addEventListener('click', async function() {
-      const tr = this.closest('tr');
-      const id = tr.getAttribute('data-id');
-      const newData = {
-        powerProduct: tr.querySelector('.edit-powerProduct').value,
-        powerCount: tr.querySelector('.edit-powerCount').value,
-        powerAmp: tr.querySelector('.edit-powerAmp').value,
-        equipmentProduct: tr.querySelector('.edit-equipmentProduct').value,
-        equipmentCount: tr.querySelector('.edit-equipmentCount').value,
-        equipmentAmp: tr.querySelector('.edit-equipmentAmp').value
-      };
-      await db.collection('sales_data').doc(id).update(newData);
-      alert('編集しました');
+      try {
+        const tr = this.closest('tr');
+        const id = tr.getAttribute('data-id');
+        const newData = {
+          powerProduct: tr.querySelector('.edit-powerProduct').value,
+          powerCount: tr.querySelector('.edit-powerCount').value,
+          powerAmp: tr.querySelector('.edit-powerAmp').value,
+          equipmentProduct: tr.querySelector('.edit-equipmentProduct').value,
+          equipmentCount: tr.querySelector('.edit-equipmentCount').value,
+          equipmentAmp: tr.querySelector('.edit-equipmentAmp').value
+        };
+        await db.collection('sales_data').doc(id).update(newData);
+        alert('編集しました');
+      } catch (error) {
+        console.error('編集エラー:', error);
+        alert('編集に失敗しました: ' + error.message);
+      }
     });
   });
 }
 
-// セレクトタグの変更時にもツリー再構築
-// function setupRelationDiagramEvents() { ... } // ←この関数とその呼び出しも削除
-
 // 現役リストを判定しモーダルで表示
 function showCurrentModal() {
-  // テーブルからrowsを再構築
   const rows = [];
   document.querySelectorAll('#resultTable tbody tr').forEach(tr => {
     if (tr.querySelector('td') && tr.querySelector('td').getAttribute('colspan')) return;
@@ -397,7 +549,7 @@ function showCurrentModal() {
     const note = tr.getAttribute('data-note') || '';
     rows.push({ date, no, powerProduct, powerAmp, powerCount, equipmentProduct, equipmentAmp, equipmentCount, note });
   });
-  // 区分取得
+  
   let productClassMap = {};
   if (cachedProducts) {
     cachedProducts["電源"].forEach(p => {
@@ -407,7 +559,7 @@ function showCurrentModal() {
       productClassMap[p["商品名"]] = p["区分"];
     });
   }
-  // --- 電源リスト ---
+  
   const powerList = [];
   rows.forEach(r => {
     if (r.powerProduct) {
@@ -422,7 +574,7 @@ function showCurrentModal() {
       }
     }
   });
-  // 区分ごとに設置日昇順でグループ化
+  
   const groupedPower = {};
   powerList.forEach(obj => {
     const key = obj.pwClass;
@@ -432,12 +584,12 @@ function showCurrentModal() {
   const currentPowerList = [];
   Object.keys(groupedPower).forEach(key => {
     const group = groupedPower[key];
-    group.sort((a, b) => new Date(a.date) - new Date(b.date)); // 古い順
+    group.sort((a, b) => new Date(a.date) - new Date(b.date));
     let stack = [];
     for (let i = 0; i < group.length; i++) {
       let item = group[i];
       if (item.note === '買換' || item.note === '下取') {
-        let toReplace = 1; // 1台ずつ
+        let toReplace = 1;
         for (let j = 0; j < stack.length && toReplace > 0; j++) {
           if (stack[j].remainCount > 0) {
             let diff = Math.min(stack[j].remainCount, toReplace);
@@ -450,7 +602,6 @@ function showCurrentModal() {
         stack.push({date: item.date, product: item.pwProduct, remainCount: 1, obj: item});
       }
     }
-    // stack内でremainCount>0のものが現役
     stack.forEach(s => {
       if (s.remainCount > 0) {
         s.obj.color = '#d4edda';
@@ -462,7 +613,7 @@ function showCurrentModal() {
       currentPowerList.push(s.obj);
     });
   });
-  // --- 機器リスト ---
+  
   const allList = [];
   rows.forEach(r => {
     if (r.equipmentProduct) {
@@ -477,7 +628,7 @@ function showCurrentModal() {
       }
     }
   });
-  // 区分ごとに設置日昇順でグループ化
+  
   const grouped = {};
   allList.forEach(obj => {
     const key = obj.eqClass;
@@ -487,7 +638,7 @@ function showCurrentModal() {
   const currentList = [];
   Object.keys(grouped).forEach(key => {
     const group = grouped[key];
-    group.sort((a, b) => new Date(a.date) - new Date(b.date)); // 古い順
+    group.sort((a, b) => new Date(a.date) - new Date(b.date));
     let stack = [];
     for (let i = 0; i < group.length; i++) {
       let item = group[i];
@@ -516,21 +667,21 @@ function showCurrentModal() {
       currentList.push(s.obj);
     });
   });
-  // 区分ごとの現役台数集計
+  
   const kubunCurrentCount = {};
   currentList.forEach(obj => {
     if (obj.state.includes('現役')) {
       kubunCurrentCount[obj.eqClass] = (kubunCurrentCount[obj.eqClass] || 0) + 1;
     }
   });
-  // 区分ごとの現役台数テーブルを追加
+  
   let html = '<h5>区分ごとの現役台数</h5>';
   html += '<table class="table table-bordered"><thead><tr><th>区分</th><th>現役台数</th></tr></thead><tbody>';
   Object.keys(kubunCurrentCount).forEach(kubun => {
     html += `<tr><td>${kubun}</td><td>${kubunCurrentCount[kubun]}</td></tr>`;
   });
   html += '</tbody></table>';
-  // モーダルHTML生成
+  
   html += '<h5>現役電源</h5>';
   html += '<table class="table table-bordered"><thead><tr><th>区分</th><th>商品名</th><th>設置日</th><th>補足</th><th>状態</th></tr></thead><tbody>';
   currentPowerList.forEach(obj => {
@@ -544,10 +695,11 @@ function showCurrentModal() {
   });
   html += '</tbody></table>';
   document.getElementById('currentModalBody').innerHTML = html;
-  // モーダル表示
+  
   const modal = new bootstrap.Modal(document.getElementById('currentModal'));
   modal.show();
 }
+
 // ボタンイベント
 if (document.getElementById('showCurrentBtn')) {
   document.getElementById('showCurrentBtn').addEventListener('click', showCurrentModal);
@@ -557,4 +709,9 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   document.getElementById('inputArea').value = '';
   const tbody = document.querySelector('#resultTable tbody');
   if (tbody) tbody.innerHTML = '';
+}); 
+
+// ページ読み込み時にアンペア計算機能を初期化
+document.addEventListener('DOMContentLoaded', function() {
+  setupAmperageCalculation();
 }); 
