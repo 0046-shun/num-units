@@ -11,11 +11,29 @@ const firebaseConfig = {
 
 let db = null;
 
-try {
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.firestore();
-} catch (error) {
-  console.error('Firebase初期化エラー:', error);
+// Firebase初期化関数
+function initializeFirebase() {
+  try {
+    // Firebaseが既に初期化されているかチェック
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    db = firebase.firestore();
+    console.log('Firebase初期化成功');
+    return true;
+  } catch (error) {
+    console.error('Firebase初期化エラー:', error);
+    alert('Firebaseの初期化に失敗しました: ' + error.message);
+    return false;
+  }
+}
+
+// ページ読み込み時にFirebaseを初期化
+if (typeof firebase !== 'undefined') {
+  initializeFirebase();
+} else {
+  console.error('Firebase SDKが読み込まれていません');
+  alert('Firebase SDKが読み込まれていません。ページを再読み込みしてください。');
 }
 
 // 商品リストを取得
@@ -398,14 +416,27 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
     return;
   }
   
+  // Firebase初期化チェック
+  if (!db) {
+    console.error('Firebaseが初期化されていません');
+    alert('Firebaseが初期化されていません。ページを再読み込みしてください。');
+    return;
+  }
+
   try {
+    console.log('データ保存開始:', rows.length, '件');
+    const savedIds = [];
     for (const row of rows) {
-      await db.collection('sales_data').add({
+      console.log('保存中:', row);
+      const docRef = await db.collection('sales_data').add({
         ...row,
         timestamp: Date.now()
       });
+      console.log('保存成功 - ドキュメントID:', docRef.id);
+      savedIds.push(docRef.id);
     }
-    alert(`${rows.length}件のデータをFirestoreに保存しました`);
+    console.log('全ての保存完了 - ドキュメントID一覧:', savedIds);
+    alert(`${rows.length}件のデータをFirestoreに保存しました\nドキュメントID: ${savedIds.join(', ')}`);
   } catch (error) {
     console.error('Firestore保存エラー:', error);
     alert('データの保存に失敗しました: ' + error.message);
@@ -414,9 +445,19 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
 
 // ストック一覧表示
 async function fetchStockFromFirestore() {
+  // Firebase初期化チェック
+  if (!db) {
+    console.error('Firebaseが初期化されていません');
+    alert('Firebaseが初期化されていません。ページを再読み込みしてください。');
+    return [];
+  }
+
   try {
+    console.log('Firestoreからデータ取得中...');
     const snapshot = await db.collection('sales_data').get();
-    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    console.log('取得したデータ:', data.length, '件');
+    return data;
   } catch (error) {
     console.error('Firestoreからのデータ取得エラー:', error);
     alert('データの取得に失敗しました: ' + error.message);
@@ -498,9 +539,17 @@ function renderStockTable(stock) {
   document.querySelectorAll('.deleteStockBtn').forEach(btn => {
     btn.addEventListener('click', async function() {
       if (confirm('このデータを削除しますか？')) {
+        // Firebase初期化チェック
+        if (!db) {
+          console.error('Firebaseが初期化されていません');
+          alert('Firebaseが初期化されていません。ページを再読み込みしてください。');
+          return;
+        }
+
         try {
           const tr = this.closest('tr');
           const id = tr.getAttribute('data-id');
+          console.log('削除中:', id);
           await db.collection('sales_data').doc(id).delete();
           tr.remove();
           alert('削除しました');
@@ -515,6 +564,13 @@ function renderStockTable(stock) {
   // 編集ボタン
   document.querySelectorAll('.editStockBtn').forEach(btn => {
     btn.addEventListener('click', async function() {
+      // Firebase初期化チェック
+      if (!db) {
+        console.error('Firebaseが初期化されていません');
+        alert('Firebaseが初期化されていません。ページを再読み込みしてください。');
+        return;
+      }
+
       try {
         const tr = this.closest('tr');
         const id = tr.getAttribute('data-id');
@@ -526,6 +582,7 @@ function renderStockTable(stock) {
           equipmentCount: tr.querySelector('.edit-equipmentCount').value,
           equipmentAmp: tr.querySelector('.edit-equipmentAmp').value
         };
+        console.log('編集中:', id, newData);
         await db.collection('sales_data').doc(id).update(newData);
         alert('編集しました');
       } catch (error) {
@@ -714,7 +771,18 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   if (tbody) tbody.innerHTML = '';
 }); 
 
-// ページ読み込み時にアンペア計算機能を初期化
+// ページ読み込み時の初期化
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('ページ読み込み完了');
+  
+  // Firebase初期化確認
+  if (!db) {
+    console.log('Firebase再初期化試行');
+    initializeFirebase();
+  }
+  
+  // アンペア計算機能を初期化
   setupAmperageCalculation();
+  
+  console.log('初期化完了');
 }); 
